@@ -19,13 +19,16 @@ const ProtectedRoute = () => {
   const { data: facilityAccess, isLoading: facilityLoading } = useQuery<FacilityAccess | null>({
     queryKey: ["user-facility", user?.id],
     queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: facilityId, error } = await supabase.rpc("get_user_facility_id" as any, {
         p_user_id: user!.id,
       });
+      
       if (error) throw error;
       if (!facilityId) return null;
 
       const [accessResult, facilityResult] = await Promise.all([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         supabase.rpc("facility_has_access" as any, { p_facility_id: facilityId }),
         supabase
           .from("facilities")
@@ -42,9 +45,15 @@ const ProtectedRoute = () => {
       };
     },
     enabled: !!user,
-    refetchInterval: 1000 * 60 * 5, // Vuelve a preguntar a Supabase cada 5 minutos en segundo plano
-    refetchOnWindowFocus: true, // Vuelve a preguntar instantáneamente si el usuario cambia de pestaña y vuelve a la app
+    refetchInterval: 1000 * 60 * 5,
+    refetchOnWindowFocus: true,
   });
+
+  // Función de rescate para desloguearse desde esta pantalla
+  const handleEmergencyLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/auth/login";
+  };
 
   if (authLoading || (user && facilityLoading)) {
     return (
@@ -59,9 +68,17 @@ const ProtectedRoute = () => {
   if (!facilityAccess?.id) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center p-6">
-          <p className="text-lg font-bold mb-2">Sin predio asignado</p>
-          <p className="text-sm text-muted-foreground">Contactá al soporte.</p>
+        <div className="text-center p-8 bg-card rounded-2xl shadow-sm border border-border max-w-sm w-full mx-4">
+          <p className="text-xl font-bold mb-2 text-card-foreground">Sin predio asignado</p>
+          <p className="text-sm text-muted-foreground mb-6">
+            Ocurrió un error al vincular tu cuenta. Por favor, contactá al soporte o volvé a iniciar sesión.
+          </p>
+          <button 
+            onClick={handleEmergencyLogout}
+            className="w-full py-2.5 bg-primary text-primary-foreground font-medium rounded-xl hover:opacity-90 transition-opacity"
+          >
+            Cerrar sesión y volver
+          </button>
         </div>
       </div>
     );

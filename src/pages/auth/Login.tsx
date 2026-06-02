@@ -14,34 +14,42 @@ const Login = () => {
   const [facilityName, setFacilityName] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ═══ NUEVO: INTERCEPTOR DE AUTO-LOGIN (Click en el mail) ═══
+  // ═══ INTERCEPTOR DE AUTO-LOGIN (Click en el mail) ═══
   useEffect(() => {
     const handleAutoLogin = async () => {
-      // Si la persona acaba de confirmar su mail, rescatamos el nombre del predio y lo creamos
       const pendingFacility = localStorage.getItem("pendingFacilityName");
       
       if (pendingFacility) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error: rpcError } = await supabase.rpc("create_facility_for_user" as any, { p_name: pendingFacility });
-          if (!rpcError) {
+          
+          if (rpcError) {
+            console.error("Error al crear el predio:", rpcError);
+            toast({ 
+              title: "Error al crear el predio", 
+              description: "No se pudo vincular el predio. ¿Ya existe uno con ese nombre?", 
+              variant: "destructive" 
+            });
+            // Si falla, lo deslogueamos para que no quede "fantasma" y frene la redirección
+            await supabase.auth.signOut();
+            return; 
+          } else {
             localStorage.removeItem("pendingFacilityName");
           }
         } catch (e) {
-          console.error("Error creando el predio post-confirmación", e);
+          console.error("Error crítico creando el predio post-confirmación", e);
+          return;
         }
       }
       
-      // Una vez creado (o si ya existía), lo mandamos directo al admin sin que ponga su clave de nuevo
       navigate("/admin");
     };
 
-    // 1. Chequeo rápido: ¿La URL ya trae la sesión iniciada?
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) handleAutoLogin();
     });
 
-    // 2. Escuchador en tiempo real: Detecta el momento exacto en que Supabase lee el token de la URL
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session) {
         handleAutoLogin();
@@ -50,7 +58,6 @@ const Login = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
-  // ════════════════════════════════════════════════════════════
 
   const handleError = (err: unknown) => {
     if (err instanceof Error || err instanceof AuthError) {
@@ -78,7 +85,13 @@ const Login = () => {
       if (pendingFacility) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: rpcError } = await supabase.rpc("create_facility_for_user" as any, { p_name: pendingFacility });
-        if (!rpcError) {
+        
+        if (rpcError) {
+           console.error("Error al crear el predio:", rpcError);
+           toast({ title: "Error", description: "No se pudo crear el predio.", variant: "destructive" });
+           await supabase.auth.signOut();
+           return; // Cortamos acá si falla
+        } else {
            localStorage.removeItem("pendingFacilityName");
         }
       }
@@ -120,8 +133,18 @@ const Login = () => {
            setIsRegister(false);
            setPassword("");
         } else {
+           // En caso de que tengas el auto-confirm activado localmente
            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-           await supabase.rpc("create_facility_for_user" as any, { p_name: facilityName.trim() });
+           const { error: rpcError } = await supabase.rpc("create_facility_for_user" as any, { p_name: facilityName.trim() });
+           
+           if (rpcError) {
+             console.error("Error al crear predio directo:", rpcError);
+             toast({ title: "Error", description: "Ya existe un predio con ese nombre.", variant: "destructive" });
+             // Lo deslogueamos para evitar el fantasma
+             await supabase.auth.signOut();
+             return;
+           }
+           
            localStorage.removeItem("pendingFacilityName");
            navigate("/admin");
         }
@@ -236,4 +259,4 @@ const Login = () => {
   );
 };
 
-export default Login;   
+export default Login;
